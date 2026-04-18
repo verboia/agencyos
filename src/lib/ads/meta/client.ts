@@ -8,12 +8,7 @@ import type {
 
 const DEFAULT_API_VERSION = "v21.0";
 
-export const META_OAUTH_SCOPES = [
-  "ads_read",
-  "ads_management",
-  "business_management",
-  "read_insights",
-];
+export const META_OAUTH_SCOPES = ["ads_read", "ads_management", "business_management"];
 
 export class MetaAdsClient {
   constructor(private readonly config: MetaAdsConfig) {}

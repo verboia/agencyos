@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
           access_token: longLived.access_token,
           refresh_token: null,
           expires_at: expiresAt,
-          granted_scopes: ["ads_read", "ads_management", "business_management", "read_insights"],
+          granted_scopes: ["ads_read", "ads_management", "business_management"],
           status: "connected",
           connected_at: new Date().toISOString(),
           metadata: {
