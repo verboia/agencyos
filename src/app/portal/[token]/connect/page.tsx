@@ -4,8 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Target, Search, Music2, CheckCircle2, AlertCircle } from "lucide-react";
-import { APP_URL } from "@/lib/utils/constants";
-
 interface Params {
   params: Promise<{ token: string }>;
   searchParams: Promise<{ connected?: string; meta_error?: string }>;
@@ -91,14 +89,14 @@ export default async function PortalConnectPage({ params, searchParams }: Params
                   </div>
                 ))}
                 <Button asChild variant="outline" className="w-full">
-                  <a href={`${APP_URL}/api/integrations/meta/start?token=${token}`}>
+                  <a href={`/api/integrations/meta/start?token=${token}`}>
                     Conectar outra conta
                   </a>
                 </Button>
               </div>
             ) : isMetaEnabled ? (
               <Button asChild className="w-full bg-[#1877f2] hover:bg-[#1877f2]/90">
-                <a href={`${APP_URL}/api/integrations/meta/start?token=${token}`}>
+                <a href={`/api/integrations/meta/start?token=${token}`}>
                   Conectar Meta Ads
                 </a>
               </Button>
