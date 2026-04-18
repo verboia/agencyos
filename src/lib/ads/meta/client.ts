@@ -130,3 +130,20 @@ export function extractLeadsFromActions(
     .filter((a) => leadTypes.has(a.action_type))
     .reduce((sum, a) => sum + Number(a.value || 0), 0);
 }
+
+/**
+ * Conta "conversas iniciadas" em campanhas Click to WhatsApp/Messenger.
+ * Principal KPI quando a landing page do anúncio é uma conversa.
+ */
+export function extractMessagingConversationsFromActions(
+  actions?: Array<{ action_type: string; value: string }>
+): number {
+  if (!actions) return 0;
+  const messagingTypes = new Set([
+    "onsite_conversion.messaging_conversation_started_7d",
+    "onsite_conversion.total_messaging_connection",
+  ]);
+  return actions
+    .filter((a) => messagingTypes.has(a.action_type))
+    .reduce((sum, a) => sum + Number(a.value || 0), 0);
+}

@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createMetaAdsClient,
   extractLeadsFromActions,
+  extractMessagingConversationsFromActions,
   isMetaAdsConfigured,
 } from "@/lib/ads/meta/client";
 import { getAdPlatformConfig } from "@/lib/services/ad-integrations";
@@ -92,7 +93,10 @@ export async function syncMetaAdsMetrics(
         const cpc = row.cpc ? Number(row.cpc) : null;
         const cpm = row.cpm ? Number(row.cpm) : null;
         const leads = extractLeadsFromActions(row.actions);
-        const cpl = leads > 0 ? spend / leads : null;
+        const messagingConversations = extractMessagingConversationsFromActions(row.actions);
+        // Se a campanha é Click to WhatsApp, conversas iniciadas são a melhor proxy de lead.
+        const effectiveLeads = leads > 0 ? leads : messagingConversations;
+        const cpl = effectiveLeads > 0 ? spend / effectiveLeads : null;
 
         await supabase.from("ad_metrics_daily").upsert(
           {
@@ -104,8 +108,9 @@ export async function syncMetaAdsMetrics(
             spend,
             impressions,
             clicks,
-            leads,
-            conversions: leads,
+            leads: effectiveLeads,
+            messaging_conversations: messagingConversations,
+            conversions: effectiveLeads,
             ctr,
             cpc,
             cpm,
