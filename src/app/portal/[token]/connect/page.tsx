@@ -24,7 +24,8 @@ export default async function PortalConnectPage({ params, searchParams }: Params
     supabase
       .from("ad_integrations")
       .select("platform, external_account_name, external_account_id, status, connected_at")
-      .eq("client_id", client.id),
+      .eq("client_id", client.id)
+      .in("status", ["connected", "expired", "revoked", "error"]),
   ]);
 
   const isMetaEnabled = Boolean(

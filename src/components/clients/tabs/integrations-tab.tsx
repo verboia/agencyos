@@ -24,6 +24,7 @@ export async function ClientIntegrationsTab({ clientId }: { clientId: string }) 
       "id, platform, external_account_id, external_account_name, status, last_sync_at, last_sync_error, connected_at"
     )
     .eq("client_id", clientId)
+    .in("status", ["connected", "expired", "revoked", "error"])
     .order("connected_at", { ascending: false });
 
   const byPlatform = {

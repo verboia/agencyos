@@ -38,6 +38,16 @@ export async function GET(request: NextRequest) {
   const meta = createMetaAdsClient(config as MetaAdsConfig);
   const redirectUri = `${APP_URL}/api/integrations/meta/callback`;
 
+  const supabase = createAdminClient();
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("public_token")
+    .eq("id", stateRecord.client_id)
+    .single();
+
+  const portalToken = clientRow?.public_token;
+  const fallbackRedirect = portalToken ? `/portal/${portalToken}/connect` : "/";
+
   try {
     const tokenRes = await meta.exchangeCodeForToken(code, redirectUri);
     const longLived = await meta.exchangeForLongLivedToken(tokenRes.access_token);
@@ -47,8 +57,6 @@ export async function GET(request: NextRequest) {
 
     const accounts = await meta.listAdAccounts(longLived.access_token);
 
-    const supabase = createAdminClient();
-
     if (accounts.length === 0) {
       await logActivity({
         clientId: stateRecord.client_id,
@@ -56,46 +64,92 @@ export async function GET(request: NextRequest) {
         description: "OAuth Meta concluído, mas nenhuma conta de anúncios foi autorizada.",
         actorType: "client",
       });
+      return NextResponse.redirect(`${APP_URL}${fallbackRedirect}?meta_error=no_accounts_shared`);
     }
 
+    // Preserva contas já 'connected' do mesmo cliente para não sobrescrever a escolha prévia
+    const { data: alreadyConnected } = await supabase
+      .from("ad_integrations")
+      .select("external_account_id")
+      .eq("client_id", stateRecord.client_id)
+      .eq("platform", "meta")
+      .eq("status", "connected");
+
+    const connectedIds = new Set(
+      (alreadyConnected ?? []).map((r) => r.external_account_id as string)
+    );
+
+    // Limpa pendências antigas não finalizadas (do mesmo cliente + plataforma)
+    await supabase
+      .from("ad_integrations")
+      .delete()
+      .eq("client_id", stateRecord.client_id)
+      .eq("platform", "meta")
+      .eq("status", "pending_selection");
+
+    let pendingCount = 0;
     for (const account of accounts) {
-      await supabase.from("ad_integrations").upsert(
-        {
-          client_id: stateRecord.client_id,
-          organization_id: stateRecord.organization_id,
-          platform: "meta",
-          external_account_id: account.account_id,
-          external_account_name: account.name,
-          access_token: longLived.access_token,
-          refresh_token: null,
-          expires_at: expiresAt,
-          granted_scopes: ["ads_read", "ads_management", "business_management"],
-          status: "connected",
-          connected_at: new Date().toISOString(),
-          metadata: {
-            currency: account.currency,
-            account_status: account.account_status,
-            business_name: account.business_name,
-            timezone: account.timezone_name,
-            fb_id: account.id,
-          },
-          updated_at: new Date().toISOString(),
+      if (connectedIds.has(account.account_id)) {
+        // Já está conectada — só atualiza o token (pode ter sido renovado)
+        await supabase
+          .from("ad_integrations")
+          .update({
+            access_token: longLived.access_token,
+            expires_at: expiresAt,
+            external_account_name: account.name,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("client_id", stateRecord.client_id)
+          .eq("platform", "meta")
+          .eq("external_account_id", account.account_id);
+        continue;
+      }
+
+      const { error: upsertError } = await supabase.from("ad_integrations").insert({
+        client_id: stateRecord.client_id,
+        organization_id: stateRecord.organization_id,
+        platform: "meta",
+        external_account_id: account.account_id,
+        external_account_name: account.name,
+        access_token: longLived.access_token,
+        refresh_token: null,
+        expires_at: expiresAt,
+        granted_scopes: ["ads_read", "ads_management", "business_management"],
+        status: "pending_selection",
+        connected_at: null,
+        metadata: {
+          currency: account.currency,
+          account_status: account.account_status,
+          business_name: account.business_name,
+          timezone: account.timezone_name,
+          fb_id: account.id,
         },
-        { onConflict: "client_id,platform,external_account_id" }
-      );
+      });
+
+      if (upsertError) {
+        console.error("Meta ad_integrations insert error", upsertError);
+      } else {
+        pendingCount++;
+      }
     }
 
     await logActivity({
       clientId: stateRecord.client_id,
-      action: "meta_ads_connected",
-      description: `Meta Ads conectado (${accounts.length} conta${accounts.length === 1 ? "" : "s"})`,
+      action: "meta_ads_oauth_completed",
+      description: `OAuth Meta concluído: ${accounts.length} conta${accounts.length === 1 ? "" : "s"} devolvida${accounts.length === 1 ? "" : "s"} pela API (${pendingCount} aguardando seleção).`,
       actorType: "client",
-      metadata: { accounts: accounts.map((a) => a.account_id) },
+      metadata: { total: accounts.length, pending: pendingCount },
     });
 
-    const redirectAfter = stateRecord.redirect_after ?? "/";
-    const qs = accounts.length === 0 ? "meta_error=no_accounts_shared" : `connected=meta&accounts=${accounts.length}`;
-    return NextResponse.redirect(`${APP_URL}${redirectAfter}?${qs}`);
+    if (pendingCount === 0) {
+      // Todas já estavam connected — nada novo para escolher
+      return NextResponse.redirect(`${APP_URL}${fallbackRedirect}?connected=meta&accounts=${accounts.length}`);
+    }
+
+    const selectUrl = portalToken
+      ? `/portal/${portalToken}/connect/meta/select`
+      : fallbackRedirect;
+    return NextResponse.redirect(`${APP_URL}${selectUrl}`);
   } catch (err) {
     console.error("Meta OAuth callback error", err);
     await logActivity({
@@ -104,8 +158,6 @@ export async function GET(request: NextRequest) {
       description: `Falha ao conectar Meta Ads: ${String(err)}`,
       actorType: "client",
     });
-    return NextResponse.redirect(
-      `${APP_URL}${stateRecord.redirect_after ?? "/"}?meta_error=connect_failed`
-    );
+    return NextResponse.redirect(`${APP_URL}${fallbackRedirect}?meta_error=connect_failed`);
   }
 }
