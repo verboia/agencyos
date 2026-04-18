@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Target, Search, Music2, CheckCircle2, AlertCircle } from "lucide-react";
 interface Params {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ connected?: string; meta_error?: string }>;
+  searchParams: Promise<{ connected?: string; accounts?: string; meta_error?: string }>;
 }
 
 export default async function PortalConnectPage({ params, searchParams }: Params) {
@@ -46,12 +46,25 @@ export default async function PortalConnectPage({ params, searchParams }: Params
         <Alert className="border-green-200 bg-green-50">
           <CheckCircle2 className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-800">
-            Meta Ads conectado com sucesso! Seus dados começarão a aparecer nos próximos relatórios.
+            {search.accounts
+              ? `Meta Ads conectado com sucesso! ${search.accounts} conta${Number(search.accounts) === 1 ? "" : "s"} vinculada${Number(search.accounts) === 1 ? "" : "s"}. Seus dados começarão a aparecer nos próximos relatórios.`
+              : "Meta Ads conectado com sucesso!"}
           </AlertDescription>
         </Alert>
       )}
 
-      {search.meta_error && (
+      {search.meta_error === "no_accounts_shared" && (
+        <Alert className="border-amber-200 bg-amber-50">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            A autorização foi concluída, mas você não selecionou nenhuma conta de anúncios para
+            compartilhar. Clique em <strong>Conectar Meta Ads</strong> de novo e, na tela da Meta,
+            marque as contas que a Adria deve ter acesso.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {search.meta_error && search.meta_error !== "no_accounts_shared" && (
         <Alert className="border-red-200 bg-red-50">
           <AlertCircle className="h-4 w-4 text-red-600" />
           <AlertDescription className="text-red-800">

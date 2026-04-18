@@ -94,7 +94,8 @@ export async function GET(request: NextRequest) {
     });
 
     const redirectAfter = stateRecord.redirect_after ?? "/";
-    return NextResponse.redirect(`${APP_URL}${redirectAfter}?connected=meta`);
+    const qs = accounts.length === 0 ? "meta_error=no_accounts_shared" : `connected=meta&accounts=${accounts.length}`;
+    return NextResponse.redirect(`${APP_URL}${redirectAfter}?${qs}`);
   } catch (err) {
     console.error("Meta OAuth callback error", err);
     await logActivity({
