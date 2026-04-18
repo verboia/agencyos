@@ -6,6 +6,7 @@ import { Target, Search, Music2, CheckCircle2, AlertCircle } from "lucide-react"
 import { formatRelativeTime } from "@/lib/utils/format";
 import { APP_URL } from "@/lib/utils/constants";
 import { CopyConnectLinkButton } from "@/components/clients/copy-connect-link-button";
+import { SyncMetaButton } from "@/components/clients/sync-meta-button";
 
 export async function ClientIntegrationsTab({ clientId }: { clientId: string }) {
   const supabase = await createServerClient();
@@ -56,6 +57,7 @@ export async function ClientIntegrationsTab({ clientId }: { clientId: string }) 
         title="Meta Ads"
         icon={<Target className="h-4 w-4 text-[#1877f2]" />}
         integrations={byPlatform.meta}
+        action={byPlatform.meta.length > 0 ? <SyncMetaButton clientId={clientId} /> : null}
       />
 
       <PlatformCard
@@ -80,6 +82,7 @@ function PlatformCard({
   icon,
   integrations,
   disabledReason,
+  action,
 }: {
   title: string;
   icon: React.ReactNode;
@@ -93,11 +96,13 @@ function PlatformCard({
     connected_at: string | null;
   }>;
   disabledReason?: string;
+  action?: React.ReactNode;
 }) {
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
         <CardTitle className="text-base flex items-center gap-2">{icon} {title}</CardTitle>
+        {action}
       </CardHeader>
       <CardContent className="space-y-2">
         {integrations.length === 0 ? (
