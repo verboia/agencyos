@@ -5,6 +5,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { formatDate, formatCurrency } from "@/lib/utils/format";
 import Link from "next/link";
 import { FileText, Plus } from "lucide-react";
+import { AdMetricsSummary } from "@/components/clients/ad-metrics-summary";
 
 export async function ClientReportsTab({ clientId }: { clientId: string }) {
   const supabase = await createServerClient();
@@ -15,9 +16,12 @@ export async function ClientReportsTab({ clientId }: { clientId: string }) {
     .order("period_start", { ascending: false });
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button asChild>
+    <div className="space-y-4">
+      <AdMetricsSummary clientId={clientId} daysBack={30} />
+
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <h3 className="text-sm font-semibold">Relatórios mensais publicados</h3>
+        <Button asChild size="sm">
           <Link href={`/clients/${clientId}/reports/new`}>
             <Plus className="h-4 w-4" /> Novo relatório
           </Link>
