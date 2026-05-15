@@ -174,7 +174,7 @@ export default async function WhatsAppWapiSettingsPage() {
                           {g.subject ?? "(sem nome)"}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {g.participants_count ?? "?"} participantes ·{" "}
+                          {g.participants_count ? `${g.participants_count} participantes · ` : ""}
                           <code className="text-[10px]">{g.group_id}</code>
                         </div>
                       </div>
@@ -201,7 +201,7 @@ export default async function WhatsAppWapiSettingsPage() {
                                 </span>
                                 <span className="text-muted-foreground">▾</span>
                               </summary>
-                              <form action={updateGroupLinkSettings} className="mt-2 ml-3 space-y-2 p-2 bg-slate-50 rounded">
+                              <form action={updateGroupLinkSettings} className="mt-2 ml-3 space-y-2 p-3 bg-muted/40 border border-border rounded text-foreground">
                                 <input type="hidden" name="link_id" value={link.id} />
                                 <div className="grid grid-cols-2 gap-2">
                                   <label className="text-xs space-y-0.5">
@@ -228,45 +228,45 @@ export default async function WhatsAppWapiSettingsPage() {
                                   </label>
                                 </div>
                                 <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
-                                  <label className="flex items-center gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
                                     <input
                                       type="checkbox"
                                       name="send_weekly_report"
                                       defaultChecked={link.send_weekly_report}
-                                    />{" "}
-                                    Relatório semanal
+                                    />
+                                    <span>Relatório semanal</span>
                                   </label>
-                                  <label className="flex items-center gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
                                     <input
                                       type="checkbox"
                                       name="send_daily_report"
                                       defaultChecked={link.send_daily_report}
-                                    />{" "}
-                                    Relatório diário
+                                    />
+                                    <span>Relatório diário</span>
                                   </label>
-                                  <label className="flex items-center gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
                                     <input
                                       type="checkbox"
                                       name="send_monthly_report"
                                       defaultChecked={link.send_monthly_report}
-                                    />{" "}
-                                    Relatório mensal
+                                    />
+                                    <span>Relatório mensal</span>
                                   </label>
-                                  <label className="flex items-center gap-2">
+                                  <label className="flex items-center gap-2 cursor-pointer">
                                     <input
                                       type="checkbox"
                                       name="send_balance_alerts"
                                       defaultChecked={link.send_balance_alerts}
-                                    />{" "}
-                                    Alertas de saldo
+                                    />
+                                    <span>Alertas de saldo</span>
                                   </label>
-                                  <label className="flex items-center gap-2 col-span-2">
+                                  <label className="flex items-center gap-2 col-span-2 cursor-pointer">
                                     <input
                                       type="checkbox"
                                       name="is_active"
                                       defaultChecked={link.is_active}
-                                    />{" "}
-                                    Vínculo ativo
+                                    />
+                                    <span>Vínculo ativo</span>
                                   </label>
                                 </div>
                                 <div className="flex justify-between items-center pt-1">
