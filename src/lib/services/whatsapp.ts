@@ -1,100 +1,199 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createEvolutionClient, isEvolutionConfigured } from "@/lib/evolution/client";
-import { logActivity } from "@/lib/services/activity-log";
+import { createWapiClient, isWapiConfigured } from "@/lib/wapi/client";
+import type { WapiConfig } from "@/lib/wapi/types";
 import { APP_URL } from "@/lib/utils/constants";
 
-async function getConfig() {
+interface SendOptions {
+  organizationId: string;
+  clientId?: string | null;
+  groupId: string;
+  message: string;
+  category: SendCategory;
+  metadata?: Record<string, unknown>;
+}
+
+export type SendCategory =
+  | "manual"
+  | "weekly_report"
+  | "daily_report"
+  | "monthly_report"
+  | "balance_alert"
+  | "reminder";
+
+export interface SendResult {
+  sent: boolean;
+  mock: boolean;
+  error?: string;
+  messageId?: string;
+}
+
+async function getWapiConfig(organizationId: string): Promise<WapiConfig | null> {
   const supabase = createAdminClient();
-  const { data } = await supabase.from("evolution_config").select("*").limit(1).maybeSingle();
-  return data;
+  const { data } = await supabase
+    .from("wapi_config")
+    .select("instance_id, token, is_active")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  return (data as WapiConfig | null) ?? null;
 }
 
-export async function sendWhatsAppMessage(to: string, text: string): Promise<boolean> {
-  const config = await getConfig();
-  if (!isEvolutionConfigured(config)) {
-    console.log(`[Evolution mock] to=${to} msg=${text.slice(0, 60)}…`);
-    return false;
-  }
-  try {
-    const client = createEvolutionClient(config!);
-    await client.sendText(to, text);
-    return true;
-  } catch (err) {
-    console.error("Evolution send failed", err);
-    return false;
-  }
-}
-
-export async function createClientWhatsAppGroup(clientId: string) {
+/**
+ * Envia uma mensagem de texto via W-API e grava log em whatsapp_send_logs.
+ * Aceita tanto groupId (xxx@g.us) quanto número individual.
+ */
+export async function sendWhatsAppMessage(opts: SendOptions): Promise<SendResult> {
   const supabase = createAdminClient();
-  const config = await getConfig();
+  const config = await getWapiConfig(opts.organizationId);
 
-  const { data: client } = await supabase.from("clients").select("*").eq("id", clientId).single();
-  if (!client) return;
-
-  if (!isEvolutionConfigured(config)) {
-    await logActivity({
-      clientId,
-      action: "whatsapp_group_skipped",
-      description: "Grupo WhatsApp pulado (Evolution não configurada) — criação manual necessária",
-      actorType: "system",
+  if (!isWapiConfigured(config)) {
+    console.log(`[W-API mock] to=${opts.groupId} category=${opts.category} msg=${opts.message.slice(0, 80)}…`);
+    await supabase.from("whatsapp_send_logs").insert({
+      organization_id: opts.organizationId,
+      client_id: opts.clientId ?? null,
+      group_id: opts.groupId,
+      category: opts.category,
+      message: opts.message,
+      status: "mock",
+      metadata: opts.metadata ?? null,
     });
-    return;
+    return { sent: false, mock: true };
   }
 
   try {
-    const evo = createEvolutionClient(config!);
-    const group = await evo.createGroup(`[Adria] ${client.company_name} — Máquina de Vendas`, [client.contact_phone]);
-    await supabase
-      .from("clients")
-      .update({ whatsapp_group_id: group.id, whatsapp_group_created: true })
-      .eq("id", clientId);
+    const client = createWapiClient(config!);
+    const response = await client.sendText(opts.groupId, opts.message);
+    const messageId = response.messageId ?? response.id;
 
-    const portalUrl = `${APP_URL}/portal/${client.public_token}`;
-    const welcome = `👋 Olá ${client.contact_name}! Bem-vindo(a) à Adria.\n\nEste é o grupo exclusivo para acompanharmos sua estratégia de geração de demanda.\n\nSeu portal: ${portalUrl}\n\nQualquer dúvida, é só chamar. Vamos juntos! 🚀`;
-    await evo.sendText(group.id, welcome);
-
-    await logActivity({
-      clientId,
-      action: "whatsapp_group_created",
-      description: `Grupo WhatsApp criado automaticamente`,
-      actorType: "system",
+    await supabase.from("whatsapp_send_logs").insert({
+      organization_id: opts.organizationId,
+      client_id: opts.clientId ?? null,
+      group_id: opts.groupId,
+      category: opts.category,
+      message: opts.message,
+      status: "sent",
+      external_message_id: messageId ?? null,
+      metadata: opts.metadata ?? null,
     });
 
-    await supabase
-      .from("tasks")
-      .update({ status: "done", completed_at: new Date().toISOString() })
-      .eq("client_id", clientId)
-      .ilike("title", "%grupo whatsapp%");
+    return { sent: true, mock: false, messageId };
   } catch (err) {
-    console.error("Evolution group failed", err);
-    await logActivity({
-      clientId,
-      action: "whatsapp_group_failed",
-      description: `Falha ao criar grupo WhatsApp: ${String(err)}`,
-      actorType: "system",
+    const errorMessage = String(err).slice(0, 500);
+    console.error("W-API sendText failed", err);
+
+    await supabase.from("whatsapp_send_logs").insert({
+      organization_id: opts.organizationId,
+      client_id: opts.clientId ?? null,
+      group_id: opts.groupId,
+      category: opts.category,
+      message: opts.message,
+      status: "failed",
+      error_message: errorMessage,
+      metadata: opts.metadata ?? null,
     });
+    return { sent: false, mock: false, error: errorMessage };
   }
 }
 
-export async function sendReportViaWhatsApp(reportId: string) {
+/**
+ * Envia mensagem para todos os grupos vinculados a um cliente que tenham o
+ * propósito compatível com a categoria solicitada.
+ */
+export async function sendToClientGroups(
+  clientId: string,
+  message: string,
+  category: SendCategory,
+  options: { metadata?: Record<string, unknown>; onlyBalanceAlerts?: boolean } = {}
+): Promise<{ total: number; sent: number; results: SendResult[] }> {
+  const supabase = createAdminClient();
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id, organization_id, company_name")
+    .eq("id", clientId)
+    .maybeSingle();
+
+  if (!client) return { total: 0, sent: 0, results: [] };
+
+  const { data: groups } = await supabase
+    .from("client_whatsapp_groups")
+    .select("group_id, send_weekly_report, send_daily_report, send_monthly_report, send_balance_alerts")
+    .eq("client_id", clientId)
+    .eq("is_active", true);
+  const all = groups ?? [];
+
+  const applicable = all.filter((g) => {
+    if (options.onlyBalanceAlerts || category === "balance_alert") return g.send_balance_alerts;
+    if (category === "weekly_report") return g.send_weekly_report;
+    if (category === "daily_report") return g.send_daily_report;
+    if (category === "monthly_report") return g.send_monthly_report;
+    return true; // manual / reminder vai pra todos os grupos ativos
+  });
+
+  const results: SendResult[] = [];
+  let sent = 0;
+  for (const g of applicable) {
+    const result = await sendWhatsAppMessage({
+      organizationId: client.organization_id,
+      clientId: client.id,
+      groupId: g.group_id,
+      message,
+      category,
+      metadata: options.metadata,
+    });
+    results.push(result);
+    if (result.sent) sent++;
+  }
+  return { total: applicable.length, sent, results };
+}
+
+/**
+ * Envia um relatório de performance (linha simples de texto) para os grupos
+ * vinculados ao cliente. Usado pelo botão "Enviar relatório agora" e pelo
+ * fluxo de publicação de relatório.
+ */
+export async function sendReportViaWhatsApp(reportId: string): Promise<boolean> {
   const supabase = createAdminClient();
   const { data: report } = await supabase
     .from("performance_reports")
-    .select("*, client:clients(id, company_name, contact_phone, public_token, whatsapp_group_id)")
+    .select(
+      "id, client_id, ad_spend, impressions, clicks, leads, cpl, period_start, period_end, client:clients(id, organization_id, company_name, public_token)"
+    )
     .eq("id", reportId)
     .single();
-  if (!report) return;
+  if (!report) return false;
   const client = Array.isArray(report.client) ? report.client[0] : report.client;
-  if (!client) return;
+  if (!client) return false;
 
-  const to = client.whatsapp_group_id ?? client.contact_phone;
   const url = `${APP_URL}/portal/${client.public_token}/reports/${reportId}`;
-  const text = `📊 Relatório de Performance\n\n💰 Investido: R$ ${report.ad_spend ?? 0}\n👀 Impressões: ${report.impressions ?? 0}\n🖱 Cliques: ${report.clicks ?? 0}\n📱 Leads: ${report.leads ?? 0}\n💵 CPL: R$ ${report.cpl ?? 0}\n\nVeja completo: ${url}`;
+  const text = `📊 *Relatório de Performance* — ${client.company_name}\n\n💰 Investido: R$ ${report.ad_spend ?? 0}\n👀 Impressões: ${report.impressions ?? 0}\n🖱 Cliques: ${report.clicks ?? 0}\n📱 Leads: ${report.leads ?? 0}\n💵 CPL: R$ ${report.cpl ?? 0}\n\nRelatório completo: ${url}`;
 
-  const sent = await sendWhatsAppMessage(to, text);
-  if (sent) {
-    await supabase.from("performance_reports").update({ sent_via_whatsapp: true, status: "sent" }).eq("id", reportId);
+  const result = await sendToClientGroups(client.id, text, "manual");
+
+  if (result.sent > 0) {
+    await supabase
+      .from("performance_reports")
+      .update({ sent_via_whatsapp: true, status: "sent" })
+      .eq("id", reportId);
+    return true;
   }
-  return sent;
+  return false;
+}
+
+/**
+ * Versão direta sem cliente: usado pelos lembretes de briefing/contrato que
+ * mandam mensagem 1-a-1 (não em grupo).
+ */
+export async function sendDirectMessage(
+  organizationId: string,
+  to: string,
+  message: string,
+  category: SendCategory = "reminder"
+): Promise<SendResult> {
+  return sendWhatsAppMessage({
+    organizationId,
+    clientId: null,
+    groupId: to,
+    message,
+    category,
+  });
 }

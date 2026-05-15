@@ -45,9 +45,11 @@ export default function SettingsPage() {
             <Card className="hover:bg-accent transition-colors cursor-pointer">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <MessageCircle className="h-4 w-4" /> WhatsApp (Meta Cloud API)
+                  <MessageCircle className="h-4 w-4" /> WhatsApp (W-API)
                 </CardTitle>
-                <CardDescription>Credenciais oficiais da Meta para envio de templates HSM.</CardDescription>
+                <CardDescription>
+                  Conecte a instância e vincule grupos a clientes para relatórios e alertas de saldo.
+                </CardDescription>
               </CardHeader>
             </Card>
           </Link>

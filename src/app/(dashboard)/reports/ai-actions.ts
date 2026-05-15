@@ -16,7 +16,7 @@ export async function runAiAnalysis(reportId: string) {
 
 export async function sendReportWhatsApp(reportId: string) {
   const sent = await sendReportViaWhatsApp(reportId);
-  if (!sent) return { error: "Mensagem simulada (Evolution não configurada). Veja logs." };
+  if (!sent) return { error: "Mensagem simulada (W-API não configurada ou cliente sem grupos vinculados). Veja logs." };
   const supabase = await createServerClient();
   const { data } = await supabase.from("performance_reports").select("client_id").eq("id", reportId).single();
   if (data) revalidatePath(`/clients/${data.client_id}/reports/${reportId}`);

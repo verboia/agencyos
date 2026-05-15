@@ -8,7 +8,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/services/current-user";
 import { generateOnboardingTasks } from "@/lib/services/task-generator";
 import { logActivity } from "@/lib/services/activity-log";
-import { createClientWhatsAppGroup } from "@/lib/services/whatsapp";
 
 const clientSchema = z.object({
   company_name: z.string().min(2, "Nome da empresa obrigatório"),
@@ -87,9 +86,6 @@ export async function createClient(formData: FormData) {
   await admin.from("client_briefings").insert({ client_id: client.id, status: "pending" });
 
   await generateOnboardingTasks(client.id, session.organizationId, assignedTo);
-
-  // Dispara criação de grupo WhatsApp (fire-and-forget; mock se não configurado)
-  createClientWhatsAppGroup(client.id).catch(() => null);
 
   await logActivity({
     clientId: client.id,
