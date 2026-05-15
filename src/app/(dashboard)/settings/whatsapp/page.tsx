@@ -36,7 +36,8 @@ export default async function WhatsAppWapiSettingsPage() {
     ]);
 
   const isConfigured = Boolean(config?.instance_id && config?.token && config?.is_active);
-  const linksByGroup = new Map<string, typeof links>();
+  type LinkRow = NonNullable<typeof links>[number];
+  const linksByGroup = new Map<string, LinkRow[]>();
   for (const link of links ?? []) {
     const list = linksByGroup.get(link.group_id) ?? [];
     list.push(link);

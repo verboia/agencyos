@@ -40,16 +40,11 @@ export async function saveWapiConfig(formData: FormData): Promise<void> {
   revalidatePath("/settings/whatsapp");
 }
 
-export interface SyncGroupsResult {
-  total: number;
-  cached: number;
-  error?: string;
-}
-
 /**
  * Chama get-all-groups na W-API e cacheia em wapi_groups_cache.
+ * O resultado é refletido na UI via last_groups_sync_* na wapi_config.
  */
-export async function syncWapiGroups(): Promise<SyncGroupsResult> {
+export async function syncWapiGroups(): Promise<void> {
   const session = await requireUser();
   if (!session.organizationId) throw new Error("Organização não encontrada");
 
@@ -61,14 +56,21 @@ export async function syncWapiGroups(): Promise<SyncGroupsResult> {
     .maybeSingle();
 
   if (!isWapiConfigured(config as WapiConfig | null)) {
-    return { total: 0, cached: 0, error: "Configure instance_id e token primeiro." };
+    await supabase
+      .from("wapi_config")
+      .update({
+        last_groups_sync_at: new Date().toISOString(),
+        last_groups_sync_error: "Configure instance_id e token primeiro.",
+      })
+      .eq("organization_id", session.organizationId);
+    revalidatePath("/settings/whatsapp");
+    return;
   }
 
   try {
     const client = createWapiClient(config as WapiConfig);
     const groups = await client.listGroups();
 
-    // Upsert no cache
     const rows = groups.map((g) => ({
       organization_id: session.organizationId,
       group_id: normalizeGroupId(g.id),
@@ -97,9 +99,6 @@ export async function syncWapiGroups(): Promise<SyncGroupsResult> {
         last_groups_sync_error: null,
       })
       .eq("organization_id", session.organizationId);
-
-    revalidatePath("/settings/whatsapp");
-    return { total: groups.length, cached: rows.length };
   } catch (err) {
     const errorMessage = String(err).slice(0, 500);
     await supabase
@@ -109,8 +108,9 @@ export async function syncWapiGroups(): Promise<SyncGroupsResult> {
         last_groups_sync_error: errorMessage,
       })
       .eq("organization_id", session.organizationId);
-    return { total: 0, cached: 0, error: errorMessage };
   }
+
+  revalidatePath("/settings/whatsapp");
 }
 
 export async function linkGroupToClient(formData: FormData): Promise<void> {
