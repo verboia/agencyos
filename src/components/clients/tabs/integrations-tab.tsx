@@ -1,11 +1,13 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Target, Search, Music2, CheckCircle2, AlertCircle, Wallet } from "lucide-react";
+import { Target, Search, Music2, CheckCircle2, AlertCircle, Wallet, Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { formatRelativeTime, formatCurrency } from "@/lib/utils/format";
 import { APP_URL } from "@/lib/utils/constants";
 import { CopyConnectLinkButton } from "@/components/clients/copy-connect-link-button";
 import { SyncMetaButton } from "@/components/clients/sync-meta-button";
+import { SendWhatsAppDialog } from "@/components/clients/send-whatsapp-dialog";
 
 interface IntegrationMetadata {
   currency?: string;
@@ -66,7 +68,22 @@ export async function ClientIntegrationsTab({ clientId }: { clientId: string }) 
         title="Meta Ads"
         icon={<Target className="h-4 w-4 text-[#1877f2]" />}
         integrations={byPlatform.meta}
-        action={byPlatform.meta.length > 0 ? <SyncMetaButton clientId={clientId} /> : null}
+        action={
+          byPlatform.meta.length > 0 ? (
+            <div className="flex flex-col items-end gap-1.5">
+              <SyncMetaButton clientId={clientId} />
+              <SendWhatsAppDialog
+                clientId={clientId}
+                mode="balance_alert"
+                trigger={
+                  <Button size="sm" variant="ghost" className="text-xs h-7">
+                    <Send className="h-3.5 w-3.5" /> Avisar saldo no WhatsApp
+                  </Button>
+                }
+              />
+            </div>
+          ) : null
+        }
       />
 
       <PlatformCard

@@ -4,8 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { createServerClient } from "@/lib/supabase/server";
 import { formatDate, formatCurrency } from "@/lib/utils/format";
 import Link from "next/link";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, Send } from "lucide-react";
 import { AdMetricsSummary } from "@/components/clients/ad-metrics-summary";
+import { SendWhatsAppDialog } from "@/components/clients/send-whatsapp-dialog";
 
 export async function ClientReportsTab({ clientId }: { clientId: string }) {
   const supabase = await createServerClient();
@@ -19,13 +20,24 @@ export async function ClientReportsTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <AdMetricsSummary clientId={clientId} daysBack={30} />
 
-      <div className="flex items-center justify-between gap-2 pt-2">
+      <div className="flex items-center justify-between gap-2 pt-2 flex-wrap">
         <h3 className="text-sm font-semibold">Relatórios mensais publicados</h3>
-        <Button asChild size="sm">
-          <Link href={`/clients/${clientId}/reports/new`}>
-            <Plus className="h-4 w-4" /> Novo relatório
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <SendWhatsAppDialog
+            clientId={clientId}
+            mode="report"
+            trigger={
+              <Button size="sm" variant="outline">
+                <Send className="h-4 w-4" /> Enviar relatório no WhatsApp
+              </Button>
+            }
+          />
+          <Button asChild size="sm">
+            <Link href={`/clients/${clientId}/reports/new`}>
+              <Plus className="h-4 w-4" /> Novo relatório
+            </Link>
+          </Button>
+        </div>
       </div>
       {!reports || reports.length === 0 ? (
         <Card>
