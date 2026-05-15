@@ -5,6 +5,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/utils/format";
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { OperatorDashboard } from "@/components/dashboard/operator-dashboard";
+import { MetaBalancesCard } from "@/components/dashboard/meta-balances-card";
 
 export default async function DashboardPage() {
   const session = await getCurrentUser();
@@ -75,6 +76,8 @@ export default async function DashboardPage() {
       </div>
 
       {session?.profile?.role === "admin" ? <AdminDashboard /> : <OperatorDashboard userId={session?.profile?.id ?? ""} />}
+
+      {session?.profile?.role === "admin" && <MetaBalancesCard />}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   extractLeadsFromActions,
   extractMessagingConversationsFromActions,
   isMetaAdsConfigured,
+  parseMetaCurrencyCents,
 } from "@/lib/ads/meta/client";
 import { getAdPlatformConfig } from "@/lib/services/ad-integrations";
 import type { MetaAdsConfig } from "@/lib/ads/meta/types";
@@ -78,6 +79,31 @@ export async function syncMetaAdsMetrics(
       }
 
       const meta = createMetaAdsClient(config!);
+
+      let balanceUpdate: Record<string, unknown> | null = null;
+      try {
+        const details = await meta.getAdAccountDetails(
+          integration.external_account_id,
+          integration.access_token
+        );
+        balanceUpdate = {
+          balance: parseMetaCurrencyCents(details.balance),
+          spend_cap: parseMetaCurrencyCents(details.spend_cap),
+          amount_spent: parseMetaCurrencyCents(details.amount_spent),
+          currency: details.currency,
+          account_status: details.account_status,
+          disable_reason: details.disable_reason ?? null,
+          funding_source: details.funding_source ?? null,
+          balance_synced_at: new Date().toISOString(),
+        };
+      } catch (balanceErr) {
+        // Falhar ao buscar saldo não deve abortar o sync de métricas.
+        console.warn(
+          `Meta balance fetch failed for integration ${integration.id}:`,
+          String(balanceErr).slice(0, 200)
+        );
+      }
+
       const rows = await meta.getDailyInsights(
         integration.external_account_id,
         integration.access_token,
@@ -122,12 +148,17 @@ export async function syncMetaAdsMetrics(
         );
       }
 
+      const mergedMetadata = balanceUpdate
+        ? { ...(integration.metadata ?? {}), ...balanceUpdate }
+        : integration.metadata;
+
       await supabase
         .from("ad_integrations")
         .update({
           last_sync_at: new Date().toISOString(),
           last_sync_error: null,
           status: "connected",
+          metadata: mergedMetadata,
         })
         .eq("id", integration.id);
 

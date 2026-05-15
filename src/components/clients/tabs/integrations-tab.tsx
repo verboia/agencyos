@@ -1,12 +1,21 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Target, Search, Music2, CheckCircle2, AlertCircle } from "lucide-react";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { Target, Search, Music2, CheckCircle2, AlertCircle, Wallet } from "lucide-react";
+import { formatRelativeTime, formatCurrency } from "@/lib/utils/format";
 import { APP_URL } from "@/lib/utils/constants";
 import { CopyConnectLinkButton } from "@/components/clients/copy-connect-link-button";
 import { SyncMetaButton } from "@/components/clients/sync-meta-button";
+
+interface IntegrationMetadata {
+  currency?: string;
+  balance?: number | null;
+  spend_cap?: number | null;
+  amount_spent?: number | null;
+  balance_synced_at?: string;
+  disable_reason?: number | null;
+  funding_source?: string | null;
+}
 
 export async function ClientIntegrationsTab({ clientId }: { clientId: string }) {
   const supabase = await createServerClient();
@@ -22,7 +31,7 @@ export async function ClientIntegrationsTab({ clientId }: { clientId: string }) 
   const { data: integrations } = await supabase
     .from("ad_integrations")
     .select(
-      "id, platform, external_account_id, external_account_name, status, last_sync_at, last_sync_error, connected_at"
+      "id, platform, external_account_id, external_account_name, status, last_sync_at, last_sync_error, connected_at, metadata"
     )
     .eq("client_id", clientId)
     .in("status", ["connected", "expired", "revoked", "error"])
@@ -94,6 +103,7 @@ function PlatformCard({
     last_sync_at: string | null;
     last_sync_error: string | null;
     connected_at: string | null;
+    metadata: IntegrationMetadata | null;
   }>;
   disabledReason?: string;
   action?: React.ReactNode;
@@ -115,32 +125,87 @@ function PlatformCard({
           integrations.map((i) => (
             <div
               key={i.id}
-              className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 text-sm"
+              className="rounded-lg border border-slate-200 p-3 text-sm space-y-3"
             >
-              <div className="min-w-0">
-                <div className="font-medium truncate">
-                  {i.external_account_name ?? `Conta #${i.external_account_id}`}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  ID {i.external_account_id}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {i.last_sync_at
-                    ? `Sincronizado ${formatRelativeTime(i.last_sync_at)}`
-                    : "Ainda não sincronizado"}
-                </div>
-                {i.last_sync_error && (
-                  <div className="text-xs text-red-600 mt-1 line-clamp-2">
-                    Erro: {i.last_sync_error}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">
+                    {i.external_account_name ?? `Conta #${i.external_account_id}`}
                   </div>
-                )}
+                  <div className="text-xs text-muted-foreground">
+                    ID {i.external_account_id}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {i.last_sync_at
+                      ? `Sincronizado ${formatRelativeTime(i.last_sync_at)}`
+                      : "Ainda não sincronizado"}
+                  </div>
+                  {i.last_sync_error && (
+                    <div className="text-xs text-red-600 mt-1 line-clamp-2">
+                      Erro: {i.last_sync_error}
+                    </div>
+                  )}
+                </div>
+                <StatusBadge status={i.status} />
               </div>
-              <StatusBadge status={i.status} />
+              <BalanceRow metadata={i.metadata} />
             </div>
           ))
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function BalanceRow({ metadata }: { metadata: IntegrationMetadata | null }) {
+  const hasBalanceData =
+    metadata &&
+    (metadata.balance !== undefined ||
+      metadata.spend_cap !== undefined ||
+      metadata.amount_spent !== undefined);
+
+  if (!hasBalanceData) {
+    return (
+      <div className="border-t border-slate-100 pt-2 text-xs text-muted-foreground flex items-center gap-1.5">
+        <Wallet className="h-3.5 w-3.5" />
+        Saldo ainda não sincronizado — clique em &quot;Sincronizar&quot;.
+      </div>
+    );
+  }
+
+  const balance = metadata.balance ?? null;
+  const spendCap = metadata.spend_cap ?? null;
+  const amountSpent = metadata.amount_spent ?? null;
+  const hasCap = spendCap !== null && spendCap > 0;
+  const remaining = hasCap && amountSpent !== null ? Math.max(spendCap - amountSpent, 0) : null;
+
+  // Saldo "para usar": prepago = balance; pós-pago com cap = (cap - spent); pós-pago sem cap = sem limite.
+  const isPrepaid = balance !== null && balance > 0;
+  const lowBalance = isPrepaid && balance !== null && balance < 100;
+
+  return (
+    <div className="border-t border-slate-100 pt-2 grid grid-cols-3 gap-2 text-xs">
+      <div>
+        <div className="text-muted-foreground flex items-center gap-1">
+          <Wallet className="h-3.5 w-3.5" /> Saldo
+        </div>
+        <div className={`font-semibold mt-0.5 ${lowBalance ? "text-red-600" : "text-foreground"}`}>
+          {isPrepaid ? formatCurrency(balance) : "—"}
+        </div>
+      </div>
+      <div>
+        <div className="text-muted-foreground">Gasto acumulado</div>
+        <div className="font-semibold mt-0.5">
+          {amountSpent !== null ? formatCurrency(amountSpent) : "—"}
+        </div>
+      </div>
+      <div>
+        <div className="text-muted-foreground">{hasCap ? "Limite restante" : "Limite de gasto"}</div>
+        <div className="font-semibold mt-0.5">
+          {hasCap ? formatCurrency(remaining ?? 0) : "Sem limite"}
+        </div>
+      </div>
+    </div>
   );
 }
 

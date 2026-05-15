@@ -1,5 +1,6 @@
 import type {
   MetaAdAccount,
+  MetaAdAccountDetails,
   MetaAdsConfig,
   MetaInsightsRow,
   MetaLongLivedTokenResponse,
@@ -80,6 +81,25 @@ export class MetaAdsClient {
     return data.data ?? [];
   }
 
+  async getAdAccountDetails(
+    adAccountId: string,
+    accessToken: string
+  ): Promise<MetaAdAccountDetails> {
+    const normalizedId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`;
+    const params = new URLSearchParams({
+      fields:
+        "id,account_id,name,currency,account_status,balance,spend_cap,amount_spent,funding_source,disable_reason,age",
+      access_token: accessToken,
+    });
+    const response = await fetch(`${this.graphUrl}/${normalizedId}?${params.toString()}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error(`Meta getAdAccountDetails ${response.status}: ${await response.text()}`);
+    }
+    return (await response.json()) as MetaAdAccountDetails;
+  }
+
   async getDailyInsights(
     adAccountId: string,
     accessToken: string,
@@ -129,6 +149,17 @@ export function extractLeadsFromActions(
   return actions
     .filter((a) => leadTypes.has(a.action_type))
     .reduce((sum, a) => sum + Number(a.value || 0), 0);
+}
+
+/**
+ * Campos financeiros da Marketing API (balance, spend_cap, amount_spent) são strings
+ * na menor unidade da moeda da conta (centavos para BRL/USD). "0" / "" / null = sem valor.
+ */
+export function parseMetaCurrencyCents(raw: string | null | undefined): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return n / 100;
 }
 
 /**

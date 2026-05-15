@@ -15,6 +15,20 @@ export interface MetaAdAccount {
   timezone_name?: string;
 }
 
+export interface MetaAdAccountDetails {
+  id: string;
+  account_id: string;
+  name?: string;
+  currency: string;
+  account_status: number;
+  balance?: string;
+  spend_cap?: string;
+  amount_spent?: string;
+  funding_source?: string;
+  disable_reason?: number;
+  age?: number;
+}
+
 export interface MetaInsightsRow {
   date_start: string;
   date_stop: string;
