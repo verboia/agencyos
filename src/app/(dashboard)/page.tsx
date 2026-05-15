@@ -1,25 +1,46 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, ListChecks, Wallet, CircleAlert } from "lucide-react";
+import { Users, ListChecks, Wallet } from "lucide-react";
 import { getCurrentUser } from "@/lib/services/current-user";
 import { createServerClient } from "@/lib/supabase/server";
 import { formatCurrency } from "@/lib/utils/format";
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { OperatorDashboard } from "@/components/dashboard/operator-dashboard";
-import { MetaBalancesCard } from "@/components/dashboard/meta-balances-card";
+import { TrafficOpsTable } from "@/components/dashboard/traffic-ops-table";
+
+interface IntegrationMetadata {
+  spend_cap?: number | null;
+  amount_spent?: number | null;
+}
 
 export default async function DashboardPage() {
   const session = await getCurrentUser();
   const supabase = await createServerClient();
+  const todayStr = new Date().toISOString().slice(0, 10);
 
-  const [{ count: clientsActive }, { count: tasksPending }, { count: clientsOnboarding }, { data: mrrData }] =
+  const [{ count: clientsActive }, { count: overdueTasks }, { data: integrations }] =
     await Promise.all([
       supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "active"),
-      supabase.from("tasks").select("*", { count: "exact", head: true }).in("status", ["pending", "in_progress"]),
-      supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "onboarding"),
-      supabase.from("clients").select("monthly_fee").in("status", ["active", "onboarding"]),
+      supabase
+        .from("tasks")
+        .select("*", { count: "exact", head: true })
+        .in("status", ["pending", "in_progress", "blocked"])
+        .lt("due_date", todayStr),
+      supabase
+        .from("ad_integrations")
+        .select("metadata")
+        .eq("platform", "meta")
+        .eq("status", "connected"),
     ]);
 
-  const mrr = (mrrData ?? []).reduce((sum, c) => sum + Number(c.monthly_fee || 0), 0);
+  const totalAvailableBalance = (integrations ?? []).reduce((sum, row) => {
+    const md = (row.metadata ?? {}) as IntegrationMetadata;
+    const spendCap = typeof md.spend_cap === "number" ? md.spend_cap : null;
+    const amountSpent = typeof md.amount_spent === "number" ? md.amount_spent : null;
+    if (spendCap === null || spendCap <= 0 || amountSpent === null) return sum;
+    return sum + Math.max(spendCap - amountSpent, 0);
+  }, 0);
+
+  const isAdmin = session?.profile?.role === "admin";
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -27,12 +48,12 @@ export default async function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            Olá, {session?.profile?.full_name ?? "visitante"}. Veja o que precisa de atenção hoje.
+            Olá, {session?.profile?.full_name ?? "visitante"}. Situação de tráfego dos clientes agora.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2">
@@ -46,38 +67,30 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2">
-              <Wallet className="h-4 w-4" /> MRR
+              <ListChecks className="h-4 w-4" /> Tarefas atrasadas
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <CardTitle className="text-3xl">{formatCurrency(mrr)}</CardTitle>
+            <CardTitle className={`text-3xl ${(overdueTasks ?? 0) > 0 ? "text-red-600" : ""}`}>
+              {overdueTasks ?? 0}
+            </CardTitle>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2">
-              <ListChecks className="h-4 w-4" /> Tarefas pendentes
+              <Wallet className="h-4 w-4" /> Saldo Meta disponível
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <CardTitle className="text-3xl">{tasksPending ?? 0}</CardTitle>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-2">
-              <CircleAlert className="h-4 w-4" /> Em onboarding
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CardTitle className="text-3xl">{clientsOnboarding ?? 0}</CardTitle>
+            <CardTitle className="text-3xl">{formatCurrency(totalAvailableBalance)}</CardTitle>
           </CardContent>
         </Card>
       </div>
 
-      {session?.profile?.role === "admin" ? <AdminDashboard /> : <OperatorDashboard userId={session?.profile?.id ?? ""} />}
+      {isAdmin && <TrafficOpsTable />}
 
-      {session?.profile?.role === "admin" && <MetaBalancesCard />}
+      {isAdmin ? <AdminDashboard /> : <OperatorDashboard userId={session?.profile?.id ?? ""} />}
     </div>
   );
 }
