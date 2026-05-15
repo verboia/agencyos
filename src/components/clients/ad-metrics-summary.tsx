@@ -269,14 +269,14 @@ function MetaBalances({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {metaAccounts.map((acc) => {
           const md = acc.metadata ?? {};
-          const balance = typeof md.balance === "number" ? md.balance : null;
+          const debt = typeof md.balance === "number" ? md.balance : null;
           const spendCap = typeof md.spend_cap === "number" ? md.spend_cap : null;
           const amountSpent = typeof md.amount_spent === "number" ? md.amount_spent : null;
           const hasCap = spendCap !== null && spendCap > 0;
-          const remaining =
+          const available =
             hasCap && amountSpent !== null ? Math.max(spendCap - amountSpent, 0) : null;
-          const isPrepaid = balance !== null && balance > 0;
-          const lowBalance = isPrepaid && balance !== null && balance < 100;
+          const hasDebt = debt !== null && debt > 0;
+          const lowBalance = available !== null && available < 100;
 
           return (
             <div
@@ -294,12 +294,12 @@ function MetaBalances({
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <div className="text-muted-foreground flex items-center gap-1">
-                    <Wallet className="h-3 w-3" /> Saldo
+                    <Wallet className="h-3 w-3" /> Saldo disponível
                   </div>
                   <div
                     className={`font-semibold mt-0.5 ${lowBalance ? "text-red-600" : "text-foreground"}`}
                   >
-                    {isPrepaid ? formatCurrency(balance) : "—"}
+                    {available !== null ? formatCurrency(available) : "—"}
                   </div>
                 </div>
                 <div>
@@ -309,14 +309,17 @@ function MetaBalances({
                   </div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground">
-                    {hasCap ? "Limite restante" : "Limite"}
-                  </div>
+                  <div className="text-muted-foreground">Total recarregado</div>
                   <div className="font-semibold mt-0.5">
-                    {hasCap ? formatCurrency(remaining ?? 0) : "Sem limite"}
+                    {hasCap ? formatCurrency(spendCap) : "Sem limite"}
                   </div>
                 </div>
               </div>
+              {hasDebt && (
+                <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                  Dívida em aberto: {formatCurrency(debt)}
+                </div>
+              )}
             </div>
           );
         })}

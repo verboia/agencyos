@@ -190,38 +190,49 @@ function BalanceRow({ metadata }: { metadata: IntegrationMetadata | null }) {
     );
   }
 
-  const balance = metadata.balance ?? null;
+  // Semântica Meta Ads (prepago BR):
+  //  - balance = DÍVIDA em aberto (em conta prepago saudável = 0)
+  //  - spend_cap = total recarregado/limite
+  //  - amount_spent = gasto acumulado
+  //  - saldo disponível = spend_cap - amount_spent
+  const debt = metadata.balance ?? null;
   const spendCap = metadata.spend_cap ?? null;
   const amountSpent = metadata.amount_spent ?? null;
   const hasCap = spendCap !== null && spendCap > 0;
-  const remaining = hasCap && amountSpent !== null ? Math.max(spendCap - amountSpent, 0) : null;
-
-  // Saldo "para usar": prepago = balance; pós-pago com cap = (cap - spent); pós-pago sem cap = sem limite.
-  const isPrepaid = balance !== null && balance > 0;
-  const lowBalance = isPrepaid && balance !== null && balance < 100;
+  const available = hasCap && amountSpent !== null ? Math.max(spendCap - amountSpent, 0) : null;
+  const hasDebt = debt !== null && debt > 0;
+  const lowBalance = available !== null && available < 100;
 
   return (
-    <div className="border-t border-slate-100 pt-2 grid grid-cols-3 gap-2 text-xs">
-      <div>
-        <div className="text-muted-foreground flex items-center gap-1">
-          <Wallet className="h-3.5 w-3.5" /> Saldo
+    <div className="border-t border-slate-100 pt-2 space-y-2">
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <div className="text-muted-foreground flex items-center gap-1">
+            <Wallet className="h-3.5 w-3.5" /> Saldo disponível
+          </div>
+          <div className={`font-semibold mt-0.5 ${lowBalance ? "text-red-600" : "text-foreground"}`}>
+            {available !== null ? formatCurrency(available) : "—"}
+          </div>
         </div>
-        <div className={`font-semibold mt-0.5 ${lowBalance ? "text-red-600" : "text-foreground"}`}>
-          {isPrepaid ? formatCurrency(balance) : "—"}
+        <div>
+          <div className="text-muted-foreground">Gasto acumulado</div>
+          <div className="font-semibold mt-0.5">
+            {amountSpent !== null ? formatCurrency(amountSpent) : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-muted-foreground">Total recarregado</div>
+          <div className="font-semibold mt-0.5">
+            {hasCap ? formatCurrency(spendCap) : "Sem limite"}
+          </div>
         </div>
       </div>
-      <div>
-        <div className="text-muted-foreground">Gasto acumulado</div>
-        <div className="font-semibold mt-0.5">
-          {amountSpent !== null ? formatCurrency(amountSpent) : "—"}
+      {hasDebt && (
+        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1 flex items-center gap-1.5">
+          <AlertCircle className="h-3.5 w-3.5" />
+          Dívida em aberto: <span className="font-semibold">{formatCurrency(debt)}</span>
         </div>
-      </div>
-      <div>
-        <div className="text-muted-foreground">{hasCap ? "Limite restante" : "Limite de gasto"}</div>
-        <div className="font-semibold mt-0.5">
-          {hasCap ? formatCurrency(remaining ?? 0) : "Sem limite"}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

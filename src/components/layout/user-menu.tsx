@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { signOut } from "@/app/(auth)/login/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -10,11 +11,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from "lucide-react";
+import { LogOut, Settings, User } from "lucide-react";
 import type { Profile } from "@/types/database";
 import { getInitials } from "@/lib/utils/format";
 
 export function UserMenu({ profile }: { profile: Profile | null }) {
+  const isAdmin = profile?.role === "admin";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="outline-none">
@@ -29,7 +31,7 @@ export function UserMenu({ profile }: { profile: Profile | null }) {
           <div className="flex flex-col">
             <span className="font-medium">{profile?.full_name ?? "Usuário"}</span>
             <span className="text-xs text-muted-foreground capitalize">
-              {profile?.role === "admin" ? "Administrador" : "Operador"}
+              {isAdmin ? "Administrador" : "Operador"}
             </span>
           </div>
         </DropdownMenuLabel>
@@ -38,6 +40,14 @@ export function UserMenu({ profile }: { profile: Profile | null }) {
           <User className="h-4 w-4 mr-2" />
           Meu perfil
         </DropdownMenuItem>
+        {isAdmin && (
+          <DropdownMenuItem asChild>
+            <Link href="/settings" className="cursor-pointer w-full">
+              <Settings className="h-4 w-4 mr-2" />
+              Configurações
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <form action={signOut}>
           <button type="submit" className="w-full">

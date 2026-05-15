@@ -212,7 +212,8 @@ export interface BalanceAlertResult {
   hasAnyLowBalance: boolean;
   accounts: Array<{
     account_name: string;
-    balance: number | null;
+    available: number | null;
+    debt: number | null;
     daily_avg: number | null;
     days_remaining: number | null;
   }>;
@@ -266,26 +267,33 @@ export async function buildBalanceAlertText(
 
   const accounts = (integrations ?? []).map((i) => {
     const md = (i.metadata ?? {}) as Record<string, unknown>;
-    const balance = typeof md.balance === "number" ? (md.balance as number) : null;
+    const spendCap = typeof md.spend_cap === "number" ? (md.spend_cap as number) : null;
+    const amountSpent = typeof md.amount_spent === "number" ? (md.amount_spent as number) : null;
+    const debt = typeof md.balance === "number" ? (md.balance as number) : null;
+    const hasCap = spendCap !== null && spendCap > 0;
+    // Saldo disponível = total recarregado (spend_cap) - gasto acumulado
+    const available =
+      hasCap && amountSpent !== null ? Math.max(spendCap - amountSpent, 0) : null;
     const recent7d = spendByIntegration.get(i.id) ?? 0;
     const dailyAvg = recent7d / 7;
     const daysRemaining =
-      balance !== null && balance > 0 && dailyAvg > 0
-        ? Math.floor(balance / dailyAvg)
+      available !== null && available > 0 && dailyAvg > 0
+        ? Math.floor(available / dailyAvg)
         : null;
     return {
       account_name: i.external_account_name ?? `Conta #${i.external_account_id}`,
-      balance,
+      available,
+      debt,
       daily_avg: dailyAvg > 0 ? dailyAvg : null,
       days_remaining: daysRemaining,
     };
   });
 
-  // Considera "saldo baixo" pelo threshold (default 100) OU se sobra <= 3 dias
+  // Considera "saldo baixo" pelo threshold OU se sobra <= 3 dias de ritmo atual
   const threshold = thresholdOverride ?? 100;
   const hasAnyLowBalance = accounts.some(
     (a) =>
-      (a.balance !== null && a.balance > 0 && a.balance < threshold) ||
+      (a.available !== null && a.available < threshold) ||
       (a.days_remaining !== null && a.days_remaining <= 3)
   );
 
@@ -299,10 +307,10 @@ export async function buildBalanceAlertText(
   } else {
     for (const acc of accounts) {
       lines.push(`*${acc.account_name}*`);
-      if (acc.balance !== null && acc.balance > 0) {
-        lines.push(`💳 Saldo atual: *${fmtBRL(acc.balance)}*`);
+      if (acc.available !== null) {
+        lines.push(`💳 Saldo disponível: *${fmtBRL(acc.available)}*`);
       } else {
-        lines.push(`💳 Saldo: pós-pago (sem saldo prepago)`);
+        lines.push(`💳 Saldo: sem limite definido (pós-pago)`);
       }
       if (acc.daily_avg !== null) {
         lines.push(`📉 Gasto médio últimos 7 dias: ${fmtBRL(acc.daily_avg)}/dia`);
@@ -312,6 +320,9 @@ export async function buildBalanceAlertText(
         lines.push(
           `${danger} Ao ritmo atual, dura *~${acc.days_remaining} ${acc.days_remaining === 1 ? "dia" : "dias"}*`
         );
+      }
+      if (acc.debt !== null && acc.debt > 0) {
+        lines.push(`❗ Dívida em aberto: ${fmtBRL(acc.debt)}`);
       }
       lines.push("");
     }

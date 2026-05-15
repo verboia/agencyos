@@ -42,23 +42,29 @@ export async function MetaBalancesCard() {
     .map((i) => {
       const md = i.metadata ?? {};
       const client = Array.isArray(i.clients) ? i.clients[0] : i.clients;
+      const spendCap = typeof md.spend_cap === "number" ? md.spend_cap : null;
+      const amountSpent = typeof md.amount_spent === "number" ? md.amount_spent : null;
+      const hasCap = spendCap !== null && spendCap > 0;
+      // Saldo disponível pro cliente = total recarregado - gasto acumulado
+      const available =
+        hasCap && amountSpent !== null ? Math.max(spendCap - amountSpent, 0) : null;
       return {
         integrationId: i.id,
         clientId: client?.id ?? i.client_id,
         clientName: client?.company_name ?? "—",
         accountName: i.external_account_name ?? `Conta #${i.external_account_id}`,
-        balance: typeof md.balance === "number" ? md.balance : null,
-        spendCap: typeof md.spend_cap === "number" ? md.spend_cap : null,
-        amountSpent: typeof md.amount_spent === "number" ? md.amount_spent : null,
+        available,
+        spendCap,
+        amountSpent,
+        debt: typeof md.balance === "number" ? md.balance : null,
         syncedAt: md.balance_synced_at ?? i.last_sync_at ?? null,
-        hasData: md.balance !== undefined || md.spend_cap !== undefined,
+        hasData: md.spend_cap !== undefined || md.amount_spent !== undefined,
       };
     })
     .sort((a, b) => {
-      // Ordena: com dados primeiro, depois pelo menor saldo.
       if (a.hasData !== b.hasData) return a.hasData ? -1 : 1;
-      const aBal = a.balance ?? Number.POSITIVE_INFINITY;
-      const bBal = b.balance ?? Number.POSITIVE_INFINITY;
+      const aBal = a.available ?? Number.POSITIVE_INFINITY;
+      const bBal = b.available ?? Number.POSITIVE_INFINITY;
       return aBal - bBal;
     });
 
@@ -85,8 +91,8 @@ export async function MetaBalancesCard() {
           <ul className="divide-y divide-border">
             {rows.map((r) => {
               const lowBalance =
-                r.balance !== null && r.balance > 0 && r.balance < LOW_BALANCE_THRESHOLD;
-              const isPrepaid = r.balance !== null && r.balance > 0;
+                r.available !== null && r.available < LOW_BALANCE_THRESHOLD;
+              const hasDebt = r.debt !== null && r.debt > 0;
               return (
                 <li key={r.integrationId}>
                   <Link
@@ -102,21 +108,17 @@ export async function MetaBalancesCard() {
                     </div>
                     <div className="text-right shrink-0">
                       {r.hasData ? (
-                        isPrepaid ? (
+                        r.available !== null ? (
                           <div
                             className={`text-sm font-semibold flex items-center gap-1 justify-end ${
                               lowBalance ? "text-red-600" : "text-foreground"
                             }`}
                           >
                             {lowBalance && <AlertTriangle className="h-3.5 w-3.5" />}
-                            {formatCurrency(r.balance)}
-                          </div>
-                        ) : r.amountSpent !== null && r.spendCap !== null && r.spendCap > 0 ? (
-                          <div className="text-sm font-semibold">
-                            {formatCurrency(Math.max(r.spendCap - r.amountSpent, 0))}
+                            {formatCurrency(r.available)}
                           </div>
                         ) : (
-                          <div className="text-xs text-muted-foreground">Pós-pago</div>
+                          <div className="text-xs text-muted-foreground">Sem limite</div>
                         )
                       ) : (
                         <div className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
@@ -126,6 +128,11 @@ export async function MetaBalancesCard() {
                       {r.amountSpent !== null && r.hasData && (
                         <div className="text-[11px] text-muted-foreground mt-0.5">
                           gasto: {formatCurrency(r.amountSpent)}
+                        </div>
+                      )}
+                      {hasDebt && (
+                        <div className="text-[11px] text-red-600 mt-0.5">
+                          dívida: {formatCurrency(r.debt)}
                         </div>
                       )}
                     </div>
