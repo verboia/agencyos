@@ -11,6 +11,8 @@ import {
   DollarSign,
   ShoppingCart,
   Banknote,
+  Wallet,
+  AlertTriangle,
 } from "lucide-react";
 import { formatCurrency, formatNumber, formatDate, formatRelativeTime } from "@/lib/utils/format";
 import { ManualMetricsEditor } from "@/components/clients/manual-metrics-editor";
@@ -45,7 +47,9 @@ export async function AdMetricsSummary({ clientId, daysBack = 30 }: Props) {
       .order("date", { ascending: false }),
     supabase
       .from("ad_integrations")
-      .select("platform, status, last_sync_at, external_account_name")
+      .select(
+        "id, platform, status, last_sync_at, external_account_id, external_account_name, metadata"
+      )
       .eq("client_id", clientId)
       .eq("status", "connected"),
   ]);
@@ -127,6 +131,8 @@ export async function AdMetricsSummary({ clientId, daysBack = 30 }: Props) {
             </Alert>
           ) : (
             <>
+              <MetaBalances integrations={integrations ?? []} />
+
               <div>
                 <div className="text-xs text-muted-foreground mb-2">Dados automáticos da Meta</div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -214,6 +220,107 @@ export async function AdMetricsSummary({ clientId, daysBack = 30 }: Props) {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+interface MetaIntegrationMetadata {
+  balance?: number | null;
+  spend_cap?: number | null;
+  amount_spent?: number | null;
+  balance_synced_at?: string;
+  currency?: string;
+}
+
+function MetaBalances({
+  integrations,
+}: {
+  integrations: Array<{
+    id: string;
+    platform: string;
+    external_account_id: string;
+    external_account_name: string | null;
+    metadata: MetaIntegrationMetadata | null;
+  }>;
+}) {
+  const metaAccounts = integrations.filter((i) => i.platform === "meta");
+  if (metaAccounts.length === 0) return null;
+
+  const anyHasBalanceData = metaAccounts.some(
+    (i) =>
+      i.metadata &&
+      (i.metadata.balance !== undefined ||
+        i.metadata.spend_cap !== undefined ||
+        i.metadata.amount_spent !== undefined)
+  );
+
+  if (!anyHasBalanceData) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-200 p-3 text-xs text-muted-foreground flex items-center gap-2">
+        <Wallet className="h-3.5 w-3.5" />
+        Saldo Meta Ads ainda não sincronizado — clique em &quot;Sincronizar&quot; na aba Integrações.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground mb-2">Saldo Meta Ads</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {metaAccounts.map((acc) => {
+          const md = acc.metadata ?? {};
+          const balance = typeof md.balance === "number" ? md.balance : null;
+          const spendCap = typeof md.spend_cap === "number" ? md.spend_cap : null;
+          const amountSpent = typeof md.amount_spent === "number" ? md.amount_spent : null;
+          const hasCap = spendCap !== null && spendCap > 0;
+          const remaining =
+            hasCap && amountSpent !== null ? Math.max(spendCap - amountSpent, 0) : null;
+          const isPrepaid = balance !== null && balance > 0;
+          const lowBalance = isPrepaid && balance !== null && balance < 100;
+
+          return (
+            <div
+              key={acc.id}
+              className={`rounded-lg border p-3 space-y-2 ${
+                lowBalance ? "border-red-200 bg-red-50/50" : "border-slate-200"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-medium truncate">
+                  {acc.external_account_name ?? `Conta #${acc.external_account_id}`}
+                </div>
+                {lowBalance && <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0" />}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <div className="text-muted-foreground flex items-center gap-1">
+                    <Wallet className="h-3 w-3" /> Saldo
+                  </div>
+                  <div
+                    className={`font-semibold mt-0.5 ${lowBalance ? "text-red-600" : "text-foreground"}`}
+                  >
+                    {isPrepaid ? formatCurrency(balance) : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Gasto</div>
+                  <div className="font-semibold mt-0.5">
+                    {amountSpent !== null ? formatCurrency(amountSpent) : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">
+                    {hasCap ? "Limite restante" : "Limite"}
+                  </div>
+                  <div className="font-semibold mt-0.5">
+                    {hasCap ? formatCurrency(remaining ?? 0) : "Sem limite"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
