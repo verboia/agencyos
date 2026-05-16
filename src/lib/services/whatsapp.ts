@@ -102,8 +102,12 @@ export async function sendToClientGroups(
   clientId: string,
   message: string,
   category: SendCategory,
-  options: { metadata?: Record<string, unknown>; onlyBalanceAlerts?: boolean } = {}
-): Promise<{ total: number; sent: number; results: SendResult[] }> {
+  options: {
+    metadata?: Record<string, unknown>;
+    onlyBalanceAlerts?: boolean;
+    skipGroupIds?: Set<string>;
+  } = {}
+): Promise<{ total: number; sent: number; skipped: number; results: SendResult[] }> {
   const supabase = createAdminClient();
 
   const { data: client } = await supabase
@@ -112,7 +116,7 @@ export async function sendToClientGroups(
     .eq("id", clientId)
     .maybeSingle();
 
-  if (!client) return { total: 0, sent: 0, results: [] };
+  if (!client) return { total: 0, sent: 0, skipped: 0, results: [] };
 
   const { data: groups } = await supabase
     .from("client_whatsapp_groups")
@@ -129,9 +133,13 @@ export async function sendToClientGroups(
     return true; // manual / reminder vai pra todos os grupos ativos
   });
 
+  const skip = options.skipGroupIds;
+  const filtered = skip ? applicable.filter((g) => !skip.has(g.group_id)) : applicable;
+  const skipped = applicable.length - filtered.length;
+
   const results: SendResult[] = [];
   let sent = 0;
-  for (const g of applicable) {
+  for (const g of filtered) {
     const result = await sendWhatsAppMessage({
       organizationId: client.organization_id,
       clientId: client.id,
@@ -143,7 +151,27 @@ export async function sendToClientGroups(
     results.push(result);
     if (result.sent) sent++;
   }
-  return { total: applicable.length, sent, results };
+  return { total: filtered.length, sent, skipped, results };
+}
+
+/**
+ * Retorna conjunto de group_ids que já receberam um envio da categoria desde `since`.
+ * Usado por crons pra evitar reenvio.
+ */
+export async function getRecentlySentGroupIds(
+  organizationId: string,
+  category: SendCategory,
+  since: Date
+): Promise<Set<string>> {
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("whatsapp_send_logs")
+    .select("group_id")
+    .eq("organization_id", organizationId)
+    .eq("category", category)
+    .in("status", ["sent", "mock"])
+    .gte("sent_at", since.toISOString());
+  return new Set((data ?? []).map((r) => r.group_id as string));
 }
 
 /**

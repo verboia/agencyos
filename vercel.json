@@ -2,8 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
-      "path": "/api/cron/sync-ad-metrics",
-      "schedule": "0 9 * * *"
+      "path": "/api/cron/whatsapp-morning",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/whatsapp-evening",
+      "schedule": "0 23 * * *"
     }
   ]
 }
